@@ -43,18 +43,8 @@ func parseToArticles(r io.Reader) (JetpackArticles, error) {
 	for markdownScanner.Scan() {
 		markdownBytes = markdownScanner.Bytes()
 
-		if len(markdownBytes) < 3 {
-			_, err := textBuilder.Write(append(markdownBytes, '\n'))
-
-			if err != nil {
-				return JetpackArticles{}, err
-			}
-
-			continue
-		}
-
-		switch lineBeginning := string(markdownBytes[:3]); {
-		case lineBeginning[:2] == "# ":
+		switch lineBeginning := string(markdownBytes); {
+		case strings.HasPrefix(lineBeginning, "# "):
 			jetpackArticles.MainTitle = string(markdownBytes[2:])
 
 			if !markdownScanner.Scan() {
@@ -62,22 +52,31 @@ func parseToArticles(r io.Reader) (JetpackArticles, error) {
 			}
 
 			textBuilder.Reset()
-		case lineBeginning == "## ":
-			if jetpackArticles.MainDescription == "" {
-				jetpackArticles.MainDescription = textBuilder.String()
-			} else {
-				jetpackArticle.BodyMarkdown = textBuilder.String()
 
-				jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
-			}
-
-			jetpackArticle.Title = string(markdownBytes[3:])
+		case strings.HasPrefix(lineBeginning, "## Jetpacks"):
+			jetpackArticles.MainDescription = textBuilder.String()
 
 			if !markdownScanner.Scan() {
 				break
 			}
 
 			textBuilder.Reset()
+
+		case jetpackArticles.MainDescription != "" && strings.HasPrefix(lineBeginning, "### "):
+			if jetpackArticle.Title != "" {
+				jetpackArticle.BodyMarkdown = textBuilder.String()
+
+				jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
+			}
+
+			jetpackArticle.Title = string(markdownBytes[4:])
+
+			if !markdownScanner.Scan() {
+				break
+			}
+
+			textBuilder.Reset()
+
 		default:
 			_, err := textBuilder.Write(append(markdownBytes, '\n'))
 
@@ -107,7 +106,7 @@ func FetchJetpackArticles() (JetpackArticles, error) {
 }
 
 func GetGithubSecret() (string, error) {
-	return "35d49eca3ed88bfd206680c1c78601cb902ad28dc98f5713ad", nil
+	return "", nil
 }
 
 func GetHandlerForGetJetpackArticles(getJetpackArticles func() *JetpackArticles) func(c *gin.Context) {
