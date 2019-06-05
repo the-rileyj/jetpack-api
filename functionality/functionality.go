@@ -192,13 +192,7 @@ func GetHandlerForGetJetpackArticles(getJetpackArticles func() *JetpackArticles)
 
 func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArticles func() error) func(c *gin.Context) {
 	return func(c *gin.Context) {
-		// requestHMAC := hmac.New(sha1.New, []byte(secret))
-
-		// bodyBytes, err := ioutil.ReadAll(c.Request.Body)
-
-		hookContext, err := ParseHook([]byte(secret), c.Request)
-
-		fmt.Println("Received %s", hookContext.Event)
+		bodyBytes, err := ioutil.ReadAll(c.Request.Body)
 
 		if err != nil {
 			c.Status(500)
@@ -207,23 +201,36 @@ func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArtic
 			return
 		}
 
-		// requestHMAC.Write(bodyBytes)
+		requestHMAC := hmac.New(sha1.New, []byte(secret))
 
-		// if c.GetHeader("X-Hub-Signature") != base64.StdEncoding.EncodeToString(requestHMAC.Sum(nil)) {
-		// 	c.Status(500)
-		// 	c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: Signature sent and signature generated do not match")))
+		requestHMAC.Write(bodyBytes)
 
-		// 	return
-		// }
+		signature := c.GetHeader("X-Hub-Signature")
 
-		// err = updateJetpackArticles()
+		if len(signature) < 6 {
+			c.Status(500)
+			c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: %s", err.Error())))
 
-		// if err != nil {
-		// 	c.Status(500)
-		// 	c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: %s", err.Error())))
+			return
+		}
 
-		// 	return
-		// }
+		actual := make([]byte, 20)
+
+		_, err = hex.Decode(actual, []byte(signature[5:]))
+
+		if err != nil {
+			c.Status(500)
+			c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: %s", err.Error())))
+
+			return
+		}
+
+		if !hmac.Equal(signBody([]byte(secret), bodyBytes), actual) {
+			c.Status(500)
+			c.Writer.Write([]byte("Articles Update Failed: Signature sent and signature generated do not match"))
+
+			return
+		}
 
 		c.Status(202)
 		c.Writer.Write([]byte("Articles Updated Successfully"))

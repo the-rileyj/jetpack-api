@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   jetpack-api-server:
-    image: jetpack-api
+    image: therileyjohnson/jetpack-api:latest
     expose:
       - "80"
     networks:

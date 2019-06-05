@@ -12,7 +12,7 @@ RUN apk update && \
 COPY go.mod go.sum ./
 
 # Install all of the nessesary dependencies
-RUN go mod tidy
+RUN go mod download
 
 # Copy in our Go files
 COPY ./functionality ./functionality
