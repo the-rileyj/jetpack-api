@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   jetpack-api-server:
-    build: .
+    image: jetpack-api
     expose:
       - "80"
     networks:
