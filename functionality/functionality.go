@@ -5,10 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -106,7 +108,23 @@ func FetchJetpackArticles() (JetpackArticles, error) {
 }
 
 func GetGithubSecret() (string, error) {
-	return "", nil
+	infoStruct := struct {
+		Secret string `json:"secret"`
+	}{}
+
+	infoFile, err := os.Open("info.json")
+
+	if err != nil {
+		return "", err
+	}
+
+	err = json.NewDecoder(infoFile).Decode(&infoStruct)
+
+	if err != nil {
+		return "", err
+	}
+
+	return infoStruct.Secret, nil
 }
 
 func GetHandlerForGetJetpackArticles(getJetpackArticles func() *JetpackArticles) func(c *gin.Context) {
@@ -161,7 +179,12 @@ func GetJetpackRouter() *gin.Engine {
 	jetpackArticlesPointer := &tmpJetpackArticles
 
 	router := gin.Default()
-	secret := ""
+
+	secret, err := GetGithubSecret()
+
+	if err != nil {
+		panic(err)
+	}
 
 	router.GET("/api/jetpack/articles", GetHandlerForGetJetpackArticles(func() *JetpackArticles {
 		accessJetpackArticlesMutex.Lock()

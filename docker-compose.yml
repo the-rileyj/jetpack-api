@@ -8,6 +8,8 @@ services:
     networks:
       - api-network
     restart: always
+    volumes:
+      - "./info.json:/info.json"
 
 networks:
   api-network:
