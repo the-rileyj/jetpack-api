@@ -19,11 +19,13 @@ func TestParseToArticles(t *testing.T) {
 
 Yep, you guessed it; this is for testing.
 
-## Test article 1
+## Jetpacks
+
+### Test article 1
 
 The first test article
 
-## Test article 2
+### Test article 2
 
 The second test article
 `,
@@ -33,9 +35,11 @@ The second test article
 
 Yep, you guessed it; this is for testing.
 
-## Test article 3
+## Jetpacks
 
-### The first test article
+### Test article 3
+
+#### The first test article
 
 Would you believe it?
 
@@ -52,7 +56,7 @@ Would you believe it?
 			},
 			JetpackArticles{
 				Articles: []JetpackArticle{
-					{"Test article 3", "### The first test article\n\nWould you believe it?\n\n"},
+					{"Test article 3", "#### The first test article\n\nWould you believe it?\n\n"},
 				},
 				MainDescription: "Yep, you guessed it; this is for testing.\n\n",
 				MainTitle:       "Test Jetpack Articles",
