@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -33,64 +32,6 @@ type JetpackArticles struct {
 	MainDescription string           `json:"mainDescription"`
 }
 
-func signBody(secret, body []byte) []byte {
-	computed := hmac.New(sha1.New, secret)
-	computed.Write(body)
-	return []byte(computed.Sum(nil))
-}
-
-func verifySignature(secret []byte, signature string, body []byte) bool {
-
-	const signaturePrefix = "sha1="
-	const signatureLength = 45 // len(SignaturePrefix) + len(hex(sha1))
-
-	if len(signature) != signatureLength || !strings.HasPrefix(signature, signaturePrefix) {
-		return false
-	}
-
-	actual := make([]byte, 20)
-	hex.Decode(actual, []byte(signature[5:]))
-
-	return hmac.Equal(signBody(secret, body), actual)
-}
-
-type HookContext struct {
-	Signature string
-	Event     string
-	Id        string
-	Payload   []byte
-}
-
-func ParseHook(secret []byte, req *http.Request) (*HookContext, error) {
-	hc := HookContext{}
-
-	if hc.Signature = req.Header.Get("x-hub-signature"); len(hc.Signature) == 0 {
-		return nil, errors.New("No signature!")
-	}
-
-	if hc.Event = req.Header.Get("x-github-event"); len(hc.Event) == 0 {
-		return nil, errors.New("No event!")
-	}
-
-	if hc.Id = req.Header.Get("x-github-delivery"); len(hc.Id) == 0 {
-		return nil, errors.New("No event Id!")
-	}
-
-	body, err := ioutil.ReadAll(req.Body)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if !verifySignature(secret, hc.Signature, body) {
-		return nil, errors.New("Invalid signature")
-	}
-
-	hc.Payload = body
-
-	return &hc, nil
-}
-
 func parseToArticles(r io.Reader) (JetpackArticles, error) {
 	var (
 		jetpackArticles JetpackArticles
@@ -101,17 +42,20 @@ func parseToArticles(r io.Reader) (JetpackArticles, error) {
 
 	markdownScanner := bufio.NewScanner(r)
 
+	parsedTitle := false
+
 	for markdownScanner.Scan() {
 		markdownBytes = markdownScanner.Bytes()
 
 		switch lineBeginning := string(markdownBytes); {
-		case strings.HasPrefix(lineBeginning, "# "):
+		case !parsedTitle && strings.HasPrefix(lineBeginning, "# "):
 			jetpackArticles.MainTitle = string(markdownBytes[2:])
 
 			if !markdownScanner.Scan() {
 				break
 			}
 
+			parsedTitle = true
 			textBuilder.Reset()
 
 		case strings.HasPrefix(lineBeginning, "## Jetpacks"):
@@ -123,14 +67,14 @@ func parseToArticles(r io.Reader) (JetpackArticles, error) {
 
 			textBuilder.Reset()
 
-		case jetpackArticles.MainDescription != "" && strings.HasPrefix(lineBeginning, "### "):
+		case jetpackArticles.MainDescription != "" && strings.HasPrefix(lineBeginning, "## "):
 			if jetpackArticle.Title != "" {
 				jetpackArticle.BodyMarkdown = textBuilder.String()
 
 				jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
 			}
 
-			jetpackArticle.Title = string(markdownBytes[4:])
+			jetpackArticle.Title = string(markdownBytes[3:])
 
 			if !markdownScanner.Scan() {
 				break
@@ -201,10 +145,6 @@ func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArtic
 			return
 		}
 
-		requestHMAC := hmac.New(sha1.New, []byte(secret))
-
-		requestHMAC.Write(bodyBytes)
-
 		signature := c.GetHeader("X-Hub-Signature")
 
 		if len(signature) < 6 {
@@ -225,12 +165,25 @@ func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArtic
 			return
 		}
 
-		if !hmac.Equal(signBody([]byte(secret), bodyBytes), actual) {
+		requestHMAC := hmac.New(sha1.New, []byte(secret))
+
+		_, err = requestHMAC.Write(bodyBytes)
+
+		if err != nil {
+			c.Status(500)
+			c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: %s", err.Error())))
+
+			return
+		}
+
+		if !hmac.Equal(requestHMAC.Sum(nil), actual) {
 			c.Status(500)
 			c.Writer.Write([]byte("Articles Update Failed: Signature sent and signature generated do not match"))
 
 			return
 		}
+
+		updateJetpackArticles()
 
 		c.Status(202)
 		c.Writer.Write([]byte("Articles Updated Successfully"))

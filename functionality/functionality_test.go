@@ -21,11 +21,11 @@ Yep, you guessed it; this is for testing.
 
 ## Jetpacks
 
-### Test article 1
+## Test article 1
 
 The first test article
 
-### Test article 2
+## Test article 2
 
 The second test article
 `,
@@ -37,9 +37,9 @@ Yep, you guessed it; this is for testing.
 
 ## Jetpacks
 
-### Test article 3
+## Test article 3
 
-#### The first test article
+### The first test article
 
 Would you believe it?
 
@@ -56,7 +56,7 @@ Would you believe it?
 			},
 			JetpackArticles{
 				Articles: []JetpackArticle{
-					{"Test article 3", "#### The first test article\n\nWould you believe it?\n\n"},
+					{"Test article 3", "### The first test article\n\nWould you believe it?\n\n"},
 				},
 				MainDescription: "Yep, you guessed it; this is for testing.\n\n",
 				MainTitle:       "Test Jetpack Articles",
