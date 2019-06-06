@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"crypto/hmac"
 	"crypto/sha1"
-	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -40,17 +42,20 @@ func parseToArticles(r io.Reader) (JetpackArticles, error) {
 
 	markdownScanner := bufio.NewScanner(r)
 
+	parsedTitle := false
+
 	for markdownScanner.Scan() {
 		markdownBytes = markdownScanner.Bytes()
 
 		switch lineBeginning := string(markdownBytes); {
-		case strings.HasPrefix(lineBeginning, "# "):
+		case !parsedTitle && strings.HasPrefix(lineBeginning, "# "):
 			jetpackArticles.MainTitle = string(markdownBytes[2:])
 
 			if !markdownScanner.Scan() {
 				break
 			}
 
+			parsedTitle = true
 			textBuilder.Reset()
 
 		case strings.HasPrefix(lineBeginning, "## Jetpacks"):
@@ -62,14 +67,14 @@ func parseToArticles(r io.Reader) (JetpackArticles, error) {
 
 			textBuilder.Reset()
 
-		case jetpackArticles.MainDescription != "" && strings.HasPrefix(lineBeginning, "### "):
+		case jetpackArticles.MainDescription != "" && strings.HasPrefix(lineBeginning, "## "):
 			if jetpackArticle.Title != "" {
 				jetpackArticle.BodyMarkdown = textBuilder.String()
 
 				jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
 			}
 
-			jetpackArticle.Title = string(markdownBytes[4:])
+			jetpackArticle.Title = string(markdownBytes[3:])
 
 			if !markdownScanner.Scan() {
 				break
@@ -106,7 +111,23 @@ func FetchJetpackArticles() (JetpackArticles, error) {
 }
 
 func GetGithubSecret() (string, error) {
-	return "", nil
+	infoStruct := struct {
+		Secret string `json:"secret"`
+	}{}
+
+	infoFile, err := os.Open("info.json")
+
+	if err != nil {
+		return "", err
+	}
+
+	err = json.NewDecoder(infoFile).Decode(&infoStruct)
+
+	if err != nil {
+		return "", err
+	}
+
+	return infoStruct.Secret, nil
 }
 
 func GetHandlerForGetJetpackArticles(getJetpackArticles func() *JetpackArticles) func(c *gin.Context) {
@@ -115,8 +136,6 @@ func GetHandlerForGetJetpackArticles(getJetpackArticles func() *JetpackArticles)
 
 func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArticles func() error) func(c *gin.Context) {
 	return func(c *gin.Context) {
-		requestHMAC := hmac.New(sha1.New, []byte(secret))
-
 		bodyBytes, err := ioutil.ReadAll(c.Request.Body)
 
 		if err != nil {
@@ -126,16 +145,18 @@ func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArtic
 			return
 		}
 
-		requestHMAC.Write(bodyBytes)
+		signature := c.GetHeader("X-Hub-Signature")
 
-		if c.GetHeader("X-Hub-Signature") != base64.StdEncoding.EncodeToString(requestHMAC.Sum(nil)) {
+		if len(signature) < 6 {
 			c.Status(500)
-			c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: Signature sent and signature generated do not match")))
+			c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: %s", err.Error())))
 
 			return
 		}
 
-		err = updateJetpackArticles()
+		actual := make([]byte, 20)
+
+		_, err = hex.Decode(actual, []byte(signature[5:]))
 
 		if err != nil {
 			c.Status(500)
@@ -143,6 +164,26 @@ func GetHandlerForUpdateJetpackArticlesHandler(secret string, updateJetpackArtic
 
 			return
 		}
+
+		requestHMAC := hmac.New(sha1.New, []byte(secret))
+
+		_, err = requestHMAC.Write(bodyBytes)
+
+		if err != nil {
+			c.Status(500)
+			c.Writer.Write([]byte(fmt.Sprintf("Articles Update Failed: %s", err.Error())))
+
+			return
+		}
+
+		if !hmac.Equal(requestHMAC.Sum(nil), actual) {
+			c.Status(500)
+			c.Writer.Write([]byte("Articles Update Failed: Signature sent and signature generated do not match"))
+
+			return
+		}
+
+		updateJetpackArticles()
 
 		c.Status(202)
 		c.Writer.Write([]byte("Articles Updated Successfully"))
@@ -161,7 +202,12 @@ func GetJetpackRouter() *gin.Engine {
 	jetpackArticlesPointer := &tmpJetpackArticles
 
 	router := gin.Default()
-	secret := ""
+
+	secret, err := GetGithubSecret()
+
+	if err != nil {
+		panic(err)
+	}
 
 	router.GET("/api/jetpack/articles", GetHandlerForGetJetpackArticles(func() *JetpackArticles {
 		accessJetpackArticlesMutex.Lock()

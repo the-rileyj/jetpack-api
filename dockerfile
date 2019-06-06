@@ -1,4 +1,6 @@
-FROM golang:1.11.3-alpine3.8 AS API-Builder
+FROM golang:1.12.5-alpine3.9 AS API-Builder
+
+WORKDIR /
 
 # Add ca-certificates to get the proper certs for making requests,
 # gcc and musl-dev for any cgo dependencies, and
@@ -6,17 +8,17 @@ FROM golang:1.11.3-alpine3.8 AS API-Builder
 RUN apk update && \
     apk add --no-cache ca-certificates gcc git musl-dev
 
-WORKDIR /go/src/github.com/the-rileyj/jetpack-api/
+# Get our dependency managing files
+COPY go.mod go.sum ./
 
+# Install all of the nessesary dependencies
+RUN go mod download
+
+# Copy in our Go files
+COPY ./functionality ./functionality
 COPY ./api-server.go .
 
-# Get dependencies locally, but don't install
-# RUN go get -d -v ./...
-
-###
-COPY go.mod .
-
-# Compile program statically with local dependencies
+# Compile the program statically with local dependencies
 RUN env CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' -a -v -o api-server
 
 # Last stage of build, adding in files and running
@@ -24,7 +26,7 @@ RUN env CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' -a -v -o api-ser
 FROM scratch
 
 # Copy the Go program compiled in the second stage
-COPY --from=API-Builder /go/src/github.com/the-rileyj/jetpack-api/ /
+COPY --from=API-Builder /api-server /
 
 # Add HTTPS Certificates for making HTTP requests from the webserver
 COPY --from=API-Builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/

@@ -1,0 +1,16 @@
+version: "3.5"
+
+services:
+  jetpack-api-server:
+    image: therileyjohnson/jetpack-api:latest
+    expose:
+      - "80"
+    networks:
+      - api-network
+    restart: always
+    volumes:
+      - "./info.json:/info.json"
+
+networks:
+  api-network:
+    name: rjnewsite_default
