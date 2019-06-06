@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -32,70 +33,138 @@ type JetpackArticles struct {
 	MainDescription string           `json:"mainDescription"`
 }
 
+func chompWhiteSpace(markdownScanner *bufio.Scanner) error {
+	for {
+		markdownLine := markdownScanner.Text()
+
+		if strings.TrimSpace(markdownLine) != "" {
+			return nil
+		}
+
+		if !markdownScanner.Scan() {
+			return errors.New("scanning ended early")
+		}
+	}
+}
+
+func parseHeading(markdownScanner *bufio.Scanner, headingPrefix string) (string, error) {
+	var err error
+
+	for {
+		markdownLine := markdownScanner.Text()
+
+		if strings.HasPrefix(markdownLine, headingPrefix) {
+			// Chomp the heading before returning
+			if !markdownScanner.Scan() {
+				return "", errors.New("scanning ended early")
+			}
+
+			return markdownLine[len(headingPrefix):], nil
+		} else if !markdownScanner.Scan() {
+			return "", errors.New("scanning ended early")
+		}
+
+		// Chomp until we are no longer being fed whitespace
+		if err = chompWhiteSpace(markdownScanner); err != nil {
+			return "", err
+		}
+	}
+}
+
+func parseMainDescription(markdownScanner *bufio.Scanner) (string, error) {
+	var textBuilder strings.Builder
+
+	for {
+		markdownLine := markdownScanner.Text()
+
+		if strings.HasPrefix(markdownLine, "## Jetpacks") {
+			// Chomp the "Jetpacks" heading before returning
+			if !markdownScanner.Scan() {
+				return "", errors.New("scanning ended early")
+			}
+
+			return textBuilder.String(), nil
+		}
+
+		textBuilder.WriteString(markdownLine + "\n")
+
+		if !markdownScanner.Scan() {
+			return "", errors.New("scanning ended early")
+		}
+	}
+}
+
+func parseArticleBody(markdownScanner *bufio.Scanner) (string, error) {
+	var textBuilder strings.Builder
+
+	bodyTopLevel := true
+
+	for {
+		markdownLine := markdownScanner.Text()
+
+		if bodyTopLevel && strings.HasPrefix(markdownLine, "## ") {
+			return textBuilder.String(), nil
+		} else if strings.HasPrefix(markdownLine, "```") {
+			// Handle code areas where there is a possibility for false positive "##"'s
+			bodyTopLevel = !bodyTopLevel
+		}
+
+		textBuilder.WriteString(markdownLine + "\n")
+
+		// If we reach the end of scanning while searching for the end of the article body,
+		// that indicates that we have reached the end of the input
+		if !markdownScanner.Scan() {
+			return textBuilder.String(), io.EOF
+		}
+	}
+}
+
 func parseToArticles(r io.Reader) (JetpackArticles, error) {
 	var (
+		err             error
 		jetpackArticles JetpackArticles
 		jetpackArticle  JetpackArticle
-		markdownBytes   []byte
-		textBuilder     strings.Builder
 	)
 
 	markdownScanner := bufio.NewScanner(r)
 
-	parsedTitle := false
+	if jetpackArticles.MainTitle, err = parseHeading(markdownScanner, "# "); err != nil {
+		return JetpackArticles{}, err
+	}
 
-	for markdownScanner.Scan() {
-		markdownBytes = markdownScanner.Bytes()
+	if err = chompWhiteSpace(markdownScanner); err != nil {
+		return JetpackArticles{}, err
+	}
 
-		switch lineBeginning := string(markdownBytes); {
-		case !parsedTitle && strings.HasPrefix(lineBeginning, "# "):
-			jetpackArticles.MainTitle = string(markdownBytes[2:])
+	if jetpackArticles.MainDescription, err = parseMainDescription(markdownScanner); err != nil {
+		return JetpackArticles{}, err
+	}
 
-			if !markdownScanner.Scan() {
-				break
-			}
+	if err = chompWhiteSpace(markdownScanner); err != nil {
+		return JetpackArticles{}, err
+	}
 
-			parsedTitle = true
-			textBuilder.Reset()
+	for {
+		if jetpackArticle.Title, err = parseHeading(markdownScanner, "## "); err != nil {
+			return JetpackArticles{}, err
+		}
 
-		case strings.HasPrefix(lineBeginning, "## Jetpacks"):
-			jetpackArticles.MainDescription = textBuilder.String()
+		if err = chompWhiteSpace(markdownScanner); err != nil {
+			return JetpackArticles{}, err
+		}
 
-			if !markdownScanner.Scan() {
-				break
-			}
-
-			textBuilder.Reset()
-
-		case jetpackArticles.MainDescription != "" && strings.HasPrefix(lineBeginning, "## "):
-			if jetpackArticle.Title != "" {
-				jetpackArticle.BodyMarkdown = textBuilder.String()
-
+		if jetpackArticle.BodyMarkdown, err = parseArticleBody(markdownScanner); err != nil {
+			if err == io.EOF {
 				jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
-			}
 
-			jetpackArticle.Title = string(markdownBytes[3:])
-
-			if !markdownScanner.Scan() {
-				break
-			}
-
-			textBuilder.Reset()
-
-		default:
-			_, err := textBuilder.Write(append(markdownBytes, '\n'))
-
-			if err != nil {
+				return jetpackArticles, nil
+			} else {
 				return JetpackArticles{}, err
 			}
 		}
+
+		jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
 	}
-
-	jetpackArticle.BodyMarkdown = textBuilder.String()
-
-	jetpackArticles.Articles = append(jetpackArticles.Articles, jetpackArticle)
-
-	return jetpackArticles, nil
 }
 
 func FetchJetpackArticles() (JetpackArticles, error) {

@@ -44,6 +44,51 @@ Yep, you guessed it; this is for testing.
 Would you believe it?
 
 `,
+			`
+
+# Test Jetpack Articles
+
+
+
+Yep, you guessed it; this is for testing.
+
+## Jetpacks
+
+
+
+
+## Test article 4
+
+
+
+### The first test article
+
+Would you believe it?
+
+`,
+			`
+
+# Test Jetpack Articles
+
+Yep, you guessed it; this is for testing.
+
+## Jetpacks
+
+## Test article 5
+
+### The first test article
+
+Would you believe it?
+
+` + "```" + `
+
+This is a test to handle code blocks,
+
+## This mock heading should not be mistaken as an actual heading
+
+` + "```" + `
+
+`,
 		}
 		expectedOutputs = []JetpackArticles{
 			JetpackArticles{
@@ -57,6 +102,20 @@ Would you believe it?
 			JetpackArticles{
 				Articles: []JetpackArticle{
 					{"Test article 3", "### The first test article\n\nWould you believe it?\n\n"},
+				},
+				MainDescription: "Yep, you guessed it; this is for testing.\n\n",
+				MainTitle:       "Test Jetpack Articles",
+			},
+			JetpackArticles{
+				Articles: []JetpackArticle{
+					{"Test article 4", "### The first test article\n\nWould you believe it?\n\n"},
+				},
+				MainDescription: "Yep, you guessed it; this is for testing.\n\n",
+				MainTitle:       "Test Jetpack Articles",
+			},
+			JetpackArticles{
+				Articles: []JetpackArticle{
+					{"Test article 5", "### The first test article\n\nWould you believe it?\n\n```\n\nThis is a test to handle code blocks,\n\n## This mock heading should not be mistaken as an actual heading\n\n```\n\n"},
 				},
 				MainDescription: "Yep, you guessed it; this is for testing.\n\n",
 				MainTitle:       "Test Jetpack Articles",
