@@ -131,7 +131,7 @@ This is a test to handle code blocks,
 		jetpackArticles, err = parseToArticles(strings.NewReader(testInput))
 
 		if err != nil {
-			t.Errorf("Unexpected error occured \"%v\"", err)
+			t.Errorf("Unexpected error occurred \"%v\"", err)
 		}
 
 		allArticlesEqual = true
